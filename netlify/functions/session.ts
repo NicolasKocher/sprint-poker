@@ -1,41 +1,55 @@
-import type { Handler } from '@netlify/functions';
-import { Session, User, GameState, TShirtSize } from '../../types';
+import type { Handler } from "@netlify/functions";
+import { getStore } from "@netlify/blobs";
+import { Session, GameState, TShirtSize, User } from "../../types";
 
-// In-Memory Store (für Produktion sollte eine Datenbank verwendet werden)
-const sessions: Map<string, Session> = new Map();
+// Persistente Speicherung über Netlify Blobs (funktioniert über mehrere Function-Instanzen hinweg)
+const storePromise = getStore({
+  name: "sprint-poker-sessions",
+  consistency: "strong",
+});
+
+const getSession = async (sessionId: string): Promise<Session | null> => {
+  const store = await storePromise;
+  return (await store.get(sessionId, { type: "json" })) as Session | null;
+};
+
+const saveSession = async (session: Session) => {
+  const store = await storePromise;
+  await store.set(session.id, JSON.stringify(session));
+};
 
 export const handler: Handler = async (event, context) => {
   const { httpMethod, path, body } = event;
-  const sessionId = path.split('/').pop()?.toUpperCase();
+  const sessionId = path.split("/").pop()?.toUpperCase();
 
   if (!sessionId) {
     return {
       statusCode: 400,
-      body: JSON.stringify({ error: 'Session ID required' }),
+      body: JSON.stringify({ error: "Session ID required" }),
     };
   }
 
   // CORS Headers
   const headers = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type',
-    'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS',
-    'Content-Type': 'application/json',
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Methods": "GET, POST, PUT, OPTIONS",
+    "Content-Type": "application/json",
   };
 
-  if (httpMethod === 'OPTIONS') {
-    return { statusCode: 200, headers, body: '' };
+  if (httpMethod === "OPTIONS") {
+    return { statusCode: 200, headers, body: "" };
   }
 
   try {
-    if (httpMethod === 'GET') {
+    if (httpMethod === "GET") {
       // Session abrufen
-      const session = sessions.get(sessionId);
+      const session = await getSession(sessionId);
       if (!session) {
         return {
           statusCode: 404,
           headers,
-          body: JSON.stringify({ error: 'Session not found' }),
+          body: JSON.stringify({ error: "Session not found" }),
         };
       }
       return {
@@ -45,12 +59,12 @@ export const handler: Handler = async (event, context) => {
       };
     }
 
-    if (httpMethod === 'POST') {
+    if (httpMethod === "POST") {
       // Session erstellen oder aktualisieren
-      const data = JSON.parse(body || '{}');
-      
-      if (data.action === 'create') {
-        const { user } = data;
+      const data = JSON.parse(body || "{}");
+
+      if (data.action === "create") {
+        const { user } = data as { user: User };
         const newSession: Session = {
           id: sessionId,
           hostId: user.id,
@@ -59,7 +73,7 @@ export const handler: Handler = async (event, context) => {
           votes: {},
           votingStartTime: null,
         };
-        sessions.set(sessionId, newSession);
+        await saveSession(newSession);
         return {
           statusCode: 201,
           headers,
@@ -67,20 +81,20 @@ export const handler: Handler = async (event, context) => {
         };
       }
 
-      if (data.action === 'join') {
-        const { user } = data;
-        const session = sessions.get(sessionId);
+      if (data.action === "join") {
+        const { user } = data as { user: User };
+        const session = await getSession(sessionId);
         if (!session) {
           return {
             statusCode: 404,
             headers,
-            body: JSON.stringify({ error: 'Session not found' }),
+            body: JSON.stringify({ error: "Session not found" }),
           };
         }
-        const userExists = session.users.some(u => u.id === user.id);
+        const userExists = session.users.some((u) => u.id === user.id);
         if (!userExists) {
           session.users.push(user);
-          sessions.set(sessionId, session);
+          await saveSession(session);
         }
         return {
           statusCode: 200,
@@ -89,13 +103,13 @@ export const handler: Handler = async (event, context) => {
         };
       }
 
-      if (data.action === 'startVoting') {
-        const session = sessions.get(sessionId);
+      if (data.action === "startVoting") {
+        const session = await getSession(sessionId);
         if (!session) {
           return {
             statusCode: 404,
             headers,
-            body: JSON.stringify({ error: 'Session not found' }),
+            body: JSON.stringify({ error: "Session not found" }),
           };
         }
         // Erlaube Start nur wenn im Idle State
@@ -103,13 +117,15 @@ export const handler: Handler = async (event, context) => {
           return {
             statusCode: 400,
             headers,
-            body: JSON.stringify({ error: `Cannot start voting. Current state: ${session.gameState}` }),
+            body: JSON.stringify({
+              error: `Cannot start voting. Current state: ${session.gameState}`,
+            }),
           };
         }
         session.gameState = GameState.Voting;
         session.votes = {};
         session.votingStartTime = Date.now();
-        sessions.set(sessionId, session);
+        await saveSession(session);
         return {
           statusCode: 200,
           headers,
@@ -117,17 +133,17 @@ export const handler: Handler = async (event, context) => {
         };
       }
 
-      if (data.action === 'finishVoting') {
-        const session = sessions.get(sessionId);
+      if (data.action === "finishVoting") {
+        const session = await getSession(sessionId);
         if (!session) {
           return {
             statusCode: 404,
             headers,
-            body: JSON.stringify({ error: 'Session not found' }),
+            body: JSON.stringify({ error: "Session not found" }),
           };
         }
         session.gameState = GameState.Finished;
-        sessions.set(sessionId, session);
+        await saveSession(session);
         return {
           statusCode: 200,
           headers,
@@ -135,19 +151,19 @@ export const handler: Handler = async (event, context) => {
         };
       }
 
-      if (data.action === 'resetVoting') {
-        const session = sessions.get(sessionId);
+      if (data.action === "resetVoting") {
+        const session = await getSession(sessionId);
         if (!session) {
           return {
             statusCode: 404,
             headers,
-            body: JSON.stringify({ error: 'Session not found' }),
+            body: JSON.stringify({ error: "Session not found" }),
           };
         }
         session.gameState = GameState.Idle;
         session.votes = {};
         session.votingStartTime = null;
-        sessions.set(sessionId, session);
+        await saveSession(session);
         return {
           statusCode: 200,
           headers,
@@ -155,25 +171,25 @@ export const handler: Handler = async (event, context) => {
         };
       }
 
-      if (data.action === 'vote') {
-        const { userId, size } = data;
-        const session = sessions.get(sessionId);
+      if (data.action === "vote") {
+        const { userId, size } = data as { userId: string; size: TShirtSize };
+        const session = await getSession(sessionId);
         if (!session) {
           return {
             statusCode: 404,
             headers,
-            body: JSON.stringify({ error: 'Session not found' }),
+            body: JSON.stringify({ error: "Session not found" }),
           };
         }
         if (session.gameState !== GameState.Voting) {
           return {
             statusCode: 400,
             headers,
-            body: JSON.stringify({ error: 'Voting is not active' }),
+            body: JSON.stringify({ error: "Voting is not active" }),
           };
         }
         session.votes[userId] = size;
-        sessions.set(sessionId, session);
+        await saveSession(session);
         return {
           statusCode: 200,
           headers,
@@ -185,15 +201,14 @@ export const handler: Handler = async (event, context) => {
     return {
       statusCode: 405,
       headers,
-      body: JSON.stringify({ error: 'Method not allowed' }),
+      body: JSON.stringify({ error: "Method not allowed" }),
     };
   } catch (error) {
-    console.error('Function error:', error);
+    console.error("Function error:", error);
     return {
       statusCode: 500,
       headers,
-      body: JSON.stringify({ error: 'Internal server error' }),
+      body: JSON.stringify({ error: "Internal server error" }),
     };
   }
 };
-
