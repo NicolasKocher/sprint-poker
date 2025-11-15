@@ -89,5 +89,29 @@ export const api = {
     }
     return response.json();
   },
-};
 
+  async leaveSession(sessionId: string, userId: string): Promise<void> {
+    const response = await fetch(`${API_BASE}/session/${sessionId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'leave', userId }),
+    });
+    if (!response.ok && response.status !== 404) {
+      throw new Error('Failed to leave session');
+    }
+  },
+
+  leaveSessionWithBeacon(sessionId: string, userId: string): boolean {
+    if (typeof navigator === 'undefined' || typeof navigator.sendBeacon !== 'function') {
+      return false;
+    }
+
+    const payload = JSON.stringify({ action: 'leave', userId });
+    const body =
+      typeof Blob !== 'undefined'
+        ? new Blob([payload], { type: 'application/json' })
+        : payload;
+
+    return navigator.sendBeacon(`${API_BASE}/session/${sessionId}`, body);
+  },
+};

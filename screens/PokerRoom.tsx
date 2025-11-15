@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { User, GameState, TShirtSize } from '../types';
 import { useSession } from '../hooks/useSession';
 import { VOTE_DURATION, SIZES } from '../constants';
@@ -15,7 +15,7 @@ interface PokerRoomProps {
 }
 
 const PokerRoom: React.FC<PokerRoomProps> = ({ user, sessionId, isCreating, onExit }) => {
-  const { session, loading, error, startVoting, finishVoting, resetVoting, castVote } = useSession(sessionId, user, isCreating);
+  const { session, loading, error, startVoting, finishVoting, resetVoting, castVote, leaveSession } = useSession(sessionId, user, isCreating);
   const [timeLeft, setTimeLeft] = useState(VOTE_DURATION);
   const [copied, setCopied] = useState(false);
 
@@ -42,6 +42,14 @@ const PokerRoom: React.FC<PokerRoomProps> = ({ user, sessionId, isCreating, onEx
   const isHost = useMemo(() => session?.hostId === user.id, [session, user.id]);
   const userVote = useMemo(() => session?.votes[user.id] || null, [session, user.id]);
 
+  const handleExitRoom = useCallback(async () => {
+    try {
+      await leaveSession();
+    } finally {
+      onExit();
+    }
+  }, [leaveSession, onExit]);
+
   if (loading) {
     return <div className="text-gray-400 text-xl">Loading session...</div>;
   }
@@ -50,7 +58,7 @@ const PokerRoom: React.FC<PokerRoomProps> = ({ user, sessionId, isCreating, onEx
     return (
       <div className="text-red-400 text-xl">
         <p>Error: {error}</p>
-        <button onClick={onExit} className="mt-4 text-gray-400 hover:text-white">
+        <button onClick={handleExitRoom} className="mt-4 text-gray-400 hover:text-white">
           &larr; Back
         </button>
       </div>
@@ -58,7 +66,14 @@ const PokerRoom: React.FC<PokerRoomProps> = ({ user, sessionId, isCreating, onEx
   }
 
   if (!session) {
-    return <div className="text-gray-400 text-xl">Session not found</div>;
+    return (
+      <div className="text-gray-400 text-xl">
+        <p>Session not found</p>
+        <button onClick={handleExitRoom} className="mt-4 text-gray-400 hover:text-white">
+          &larr; Back
+        </button>
+      </div>
+    );
   }
   
   const handleVote = (size: TShirtSize) => {
@@ -103,7 +118,7 @@ const PokerRoom: React.FC<PokerRoomProps> = ({ user, sessionId, isCreating, onEx
   return (
     <div className="w-full flex flex-col items-center space-y-8 md:space-y-12 animate-fade-in">
         <div className="w-full flex justify-between items-center">
-            <button onClick={onExit} className="text-gray-400 hover:text-white transition-colors">&larr; Exit</button>
+            <button onClick={handleExitRoom} className="text-gray-400 hover:text-white transition-colors">&larr; Exit</button>
             <div className="text-center cursor-pointer" onClick={handleCopyRoomCode}>
                 <p className="text-gray-500 text-sm">ROOM CODE</p>
                 <p className={`text-2xl font-bold tracking-widest transition-colors ${copied ? 'text-lime-400' : 'text-white hover:text-lime-300'}`}>

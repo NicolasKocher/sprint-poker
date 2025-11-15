@@ -8,6 +8,8 @@
 - Host startet Voting manuell, nach dem Voting klickt der Host auf „Reset & Start New Vote“.
 - Error Handling für Start-/Finish-/Reset-Voting verbessert (State-Checks, klare Fehlermeldungen).
 - Copy-to-Clipboard für den Room-Code vorhanden.
+- Benutzer-IDs werden lokal pro Name gespeichert, damit Hosts nach einem Reload den Raum weiter steuern können.
+- Exit/Tab-Close informiert das Backend und räumt Sessions automatisch auf.
 
 ### Wichtige Änderungen / Entscheidungen
 
@@ -29,6 +31,10 @@
 4. **UX**
    - Kopierbarer Room-Code mit visuellem Feedback.
    - Nicht-Hosts sehen im Finished-State „Waiting for host to reset…“.
+
+5. **Benutzer & Cleanup**
+   - User-IDs werden pro Name in `localStorage` gemerkt → Host bleibt Host, wenn er mit gleichem Namen zurückkehrt.
+   - Neuer `leave`-Flow entfernt Benutzer und Votes beim Verlassen; Hostwechsel erfolgt automatisch oder Session wird gelöscht, wenn niemand mehr im Raum ist.
 
 ### Offene Punkte / Hinweise
 

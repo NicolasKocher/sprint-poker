@@ -101,11 +101,71 @@ export const handler: Handler = async (event, context) => {
             body: JSON.stringify({ error: "Session not found" }),
           };
         }
-        const userExists = session.users.some((u) => u.id === user.id);
-        if (!userExists) {
+        const userIndex = session.users.findIndex((u) => u.id === user.id);
+        let sessionModified = false;
+        if (userIndex === -1) {
           session.users.push(user);
+          sessionModified = true;
+        } else if (session.users[userIndex].name !== user.name) {
+          session.users[userIndex] = { ...session.users[userIndex], name: user.name };
+          sessionModified = true;
+        }
+
+        if (sessionModified) {
           await saveSession(store, session);
         }
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify(session),
+        };
+      }
+
+      if (data.action === "leave") {
+        const { userId } = data as { userId: string };
+        const session = await getSession(store, sessionId);
+        if (!session) {
+          return {
+            statusCode: 404,
+            headers,
+            body: JSON.stringify({ error: "Session not found" }),
+          };
+        }
+
+        const userIndex = session.users.findIndex((u) => u.id === userId);
+        if (userIndex === -1) {
+          return {
+            statusCode: 200,
+            headers,
+            body: JSON.stringify(session),
+          };
+        }
+
+        session.users.splice(userIndex, 1);
+        delete session.votes[userId];
+
+        if (session.users.length === 0) {
+          await store.delete(sessionId);
+          return {
+            statusCode: 200,
+            headers,
+            body: JSON.stringify({ deleted: true }),
+          };
+        }
+
+        if (session.hostId === userId) {
+          session.hostId = session.users[0].id;
+          session.gameState = GameState.Idle;
+          session.votes = {};
+          session.votingStartTime = null;
+        } else if (
+          session.gameState === GameState.Voting &&
+          Object.keys(session.votes).length === session.users.length
+        ) {
+          session.gameState = GameState.Finished;
+        }
+
+        await saveSession(store, session);
         return {
           statusCode: 200,
           headers,

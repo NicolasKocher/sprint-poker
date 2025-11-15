@@ -19,7 +19,7 @@ View your app in AI Studio: https://ai.studio/apps/drive/1mIh_iAPxByrczVrcmzuXwV
 
 2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key (optional)
 
-3. Run the app with Netlify Functions:
+3. Run the app with Netlify Functions (set `NETLIFY_BLOBS_TOKEN` when prompted so the local Blob store works):
    ```bash
    # Terminal 1: Start Netlify Functions Server
    npx netlify dev
@@ -52,9 +52,10 @@ View your app in AI Studio: https://ai.studio/apps/drive/1mIh_iAPxByrczVrcmzuXwV
 
 ## Multi-User Support
 
-Die App unterstützt jetzt mehrere Benutzer gleichzeitig! Alle Benutzer können:
-- Einen Room Code eingeben, um demselben Raum beizutreten
-- Gleichzeitig voten
-- Die Ergebnisse in Echtzeit sehen (aktualisiert alle 1 Sekunde)
+Die App unterstützt jetzt mehrere Benutzer gleichzeitig – auch über verschiedene Netzwerke hinweg – und speichert Sessions persistent über Netlify Blobs. Das bedeutet:
+- Jeder Benutzer kann über den Room Code denselben Raum betreten
+- Votes werden in Echtzeit alle 500 ms synchronisiert
+- Hosts behalten ihre Rechte, solange sie denselben Namen auf demselben Gerät nutzen (IDs werden lokal gespeichert)
+- Ein Klick auf „Exit“ entfernt Benutzer sauber aus der Session; wenn alle den Raum verlassen, wird die Session automatisch gelöscht
 
-**Hinweis:** Die aktuelle Implementierung verwendet einen In-Memory Store. Sessions gehen bei einem Neustart verloren. Für Produktion sollte eine persistente Datenbank verwendet werden.
+**Hinweis:** Für lokale Entwicklung muss `npx netlify dev` mit gültigem `NETLIFY_BLOBS_TOKEN` laufen, damit die persistente Ablage funktioniert.

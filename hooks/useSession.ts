@@ -12,6 +12,14 @@ export const useSession = (
   const [error, setError] = useState<string | null>(null);
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
+  const leaveSession = useCallback(async () => {
+    try {
+      await api.leaveSession(sessionId, user.id);
+    } catch (err) {
+      console.error("Leave session error:", err);
+    }
+  }, [sessionId, user.id]);
+
   // Polling für Updates
   const startPolling = useCallback(() => {
     if (pollingIntervalRef.current) {
@@ -176,6 +184,21 @@ export const useSession = (
     [session, sessionId, user.id]
   );
 
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const handleBeforeUnload = () => {
+      api.leaveSessionWithBeacon(sessionId, user.id);
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [sessionId, user.id]);
+
   return {
     session,
     loading,
@@ -185,5 +208,6 @@ export const useSession = (
     finishVoting,
     resetVoting,
     castVote,
+    leaveSession,
   };
 };

@@ -3,7 +3,7 @@ import JoinScreen from './screens/JoinScreen';
 import PokerRoom from './screens/PokerRoom';
 import Header from './components/Header';
 import { User } from './types';
-import { generateId } from './utils/helpers';
+import { getPersistentUserId } from './utils/helpers';
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -11,7 +11,8 @@ const App: React.FC = () => {
   const [isCreating, setIsCreating] = useState<boolean>(false);
 
   const handleJoin = useCallback((name: string, sid: string, creating: boolean) => {
-    const newUser: User = { id: generateId(), name };
+    const userId = getPersistentUserId(name);
+    const newUser: User = { id: userId, name };
     setUser(newUser);
     setSessionId(sid);
     setIsCreating(creating);
