@@ -22,7 +22,11 @@ const getStoreInstance = async (context: any) => {
   // Auf Netlify ist context.netlify.blobs.store der bevorzugte Weg
   if (context?.netlify?.blobs?.store) {
     try {
-      return context.netlify.blobs.store(STORE_NAME);
+      const store = context.netlify.blobs.store(STORE_NAME);
+      // Test ob der Store funktioniert
+      if (store && typeof store.get === "function") {
+        return store;
+      }
     } catch (error) {
       console.warn(
         "Failed to use Netlify built-in store, falling back:",
@@ -36,22 +40,29 @@ const getStoreInstance = async (context: any) => {
 
   if (!siteID) {
     // Auf Netlify sollte context.site.id immer verfügbar sein
+    const contextInfo = {
+      hasSite: !!context?.site,
+      siteId: context?.site?.id,
+      hasNetlifyBlobs: !!context?.netlify?.blobs,
+      hasNetlifyBlobsStore: !!context?.netlify?.blobs?.store,
+      envSiteId: !!process.env.NETLIFY_SITE_ID,
+    };
+    console.error("Store initialization failed - missing siteID:", contextInfo);
     throw new Error(
-      `Netlify site ID is not available. Context: ${JSON.stringify({
-        hasSite: !!context?.site,
-        siteId: context?.site?.id,
-        hasNetlifyBlobs: !!context?.netlify?.blobs,
-      })}`
+      `Netlify site ID is not available. Context info: ${JSON.stringify(
+        contextInfo
+      )}`
     );
   }
 
   try {
     // Versuche mit strong consistency
-    return getStore({
+    const store = getStore({
       name: STORE_NAME,
       siteID,
       consistency: "strong",
     });
+    return store;
   } catch (error) {
     if (error instanceof Error && error.name === "BlobsConsistencyError") {
       console.warn(
@@ -83,7 +94,16 @@ const saveSession = async (
   store: Awaited<ReturnType<typeof getStoreInstance>>,
   session: Session
 ) => {
-  await store.set(session.id, JSON.stringify(session));
+  try {
+    await store.set(session.id, JSON.stringify(session));
+  } catch (error) {
+    console.error(`Error saving session ${session.id}:`, error);
+    throw new Error(
+      `Failed to save session: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
+  }
 };
 
 export const handler: Handler = async (event, context) => {
@@ -110,45 +130,105 @@ export const handler: Handler = async (event, context) => {
   }
 
   try {
-    const store = await getStoreInstance(context);
+    let store;
+    try {
+      store = await getStoreInstance(context);
+    } catch (storeError) {
+      console.error("Failed to initialize store:", storeError);
+      return {
+        statusCode: 500,
+        headers,
+        body: JSON.stringify({
+          error: "Failed to initialize storage",
+          details:
+            storeError instanceof Error
+              ? storeError.message
+              : String(storeError),
+        }),
+      };
+    }
 
     if (httpMethod === "GET") {
       // Session abrufen
-      const session = await getSession(store, sessionId);
-      if (!session) {
+      try {
+        const session = await getSession(store, sessionId);
+        if (!session) {
+          return {
+            statusCode: 404,
+            headers,
+            body: JSON.stringify({ error: "Session not found" }),
+          };
+        }
         return {
-          statusCode: 404,
+          statusCode: 200,
           headers,
-          body: JSON.stringify({ error: "Session not found" }),
+          body: JSON.stringify(session),
+        };
+      } catch (error) {
+        console.error("Error getting session:", error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({
+            error: "Failed to retrieve session",
+            details: error instanceof Error ? error.message : String(error),
+          }),
         };
       }
-      return {
-        statusCode: 200,
-        headers,
-        body: JSON.stringify(session),
-      };
     }
 
     if (httpMethod === "POST") {
       // Session erstellen oder aktualisieren
-      const data = JSON.parse(body || "{}");
+      let data;
+      try {
+        data = JSON.parse(body || "{}");
+      } catch (parseError) {
+        console.error("Error parsing request body:", parseError);
+        return {
+          statusCode: 400,
+          headers,
+          body: JSON.stringify({ error: "Invalid JSON in request body" }),
+        };
+      }
 
       if (data.action === "create") {
-        const { user } = data as { user: User };
-        const newSession: Session = {
-          id: sessionId,
-          hostId: user.id,
-          users: [user],
-          gameState: GameState.Idle,
-          votes: {},
-          votingStartTime: null,
-        };
-        await saveSession(store, newSession);
-        return {
-          statusCode: 201,
-          headers,
-          body: JSON.stringify(newSession),
-        };
+        try {
+          const { user } = data as { user: User };
+          if (!user || !user.id || !user.name) {
+            return {
+              statusCode: 400,
+              headers,
+              body: JSON.stringify({ error: "Invalid user data" }),
+            };
+          }
+          const newSession: Session = {
+            id: sessionId,
+            hostId: user.id,
+            users: [user],
+            gameState: GameState.Idle,
+            votes: {},
+            votingStartTime: null,
+          };
+          await saveSession(store, newSession);
+          return {
+            statusCode: 201,
+            headers,
+            body: JSON.stringify(newSession),
+          };
+        } catch (createError) {
+          console.error("Error creating session:", createError);
+          return {
+            statusCode: 500,
+            headers,
+            body: JSON.stringify({
+              error: "Failed to create session",
+              details:
+                createError instanceof Error
+                  ? createError.message
+                  : String(createError),
+            }),
+          };
+        }
       }
 
       if (data.action === "join") {
