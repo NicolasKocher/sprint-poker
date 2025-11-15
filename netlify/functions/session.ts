@@ -2,19 +2,27 @@ import type { Handler } from "@netlify/functions";
 import { getStore } from "@netlify/blobs";
 import { Session, GameState, TShirtSize, User } from "../../types";
 
-// Persistente Speicherung über Netlify Blobs (funktioniert über mehrere Function-Instanzen hinweg)
-const storePromise = getStore({
-  name: "sprint-poker-sessions",
-  consistency: "strong",
-});
+// Store initialisieren: Wir benötigen die Site-ID (verfügbar im Netlify-Kontext oder als ENV)
+const getStoreInstance = async (context: any) => {
+  const siteID = context?.site?.id || process.env.NETLIFY_SITE_ID;
+  return getStore({
+    name: "sprint-poker-sessions",
+    siteID,
+    consistency: "strong",
+  });
+};
 
-const getSession = async (sessionId: string): Promise<Session | null> => {
-  const store = await storePromise;
+const getSession = async (
+  store: Awaited<ReturnType<typeof getStoreInstance>>,
+  sessionId: string
+): Promise<Session | null> => {
   return (await store.get(sessionId, { type: "json" })) as Session | null;
 };
 
-const saveSession = async (session: Session) => {
-  const store = await storePromise;
+const saveSession = async (
+  store: Awaited<ReturnType<typeof getStoreInstance>>,
+  session: Session
+) => {
   await store.set(session.id, JSON.stringify(session));
 };
 
@@ -42,9 +50,11 @@ export const handler: Handler = async (event, context) => {
   }
 
   try {
+    const store = await getStoreInstance(context);
+
     if (httpMethod === "GET") {
       // Session abrufen
-      const session = await getSession(sessionId);
+      const session = await getSession(store, sessionId);
       if (!session) {
         return {
           statusCode: 404,
@@ -73,7 +83,7 @@ export const handler: Handler = async (event, context) => {
           votes: {},
           votingStartTime: null,
         };
-        await saveSession(newSession);
+        await saveSession(store, newSession);
         return {
           statusCode: 201,
           headers,
@@ -83,7 +93,7 @@ export const handler: Handler = async (event, context) => {
 
       if (data.action === "join") {
         const { user } = data as { user: User };
-        const session = await getSession(sessionId);
+        const session = await getSession(store, sessionId);
         if (!session) {
           return {
             statusCode: 404,
@@ -94,7 +104,7 @@ export const handler: Handler = async (event, context) => {
         const userExists = session.users.some((u) => u.id === user.id);
         if (!userExists) {
           session.users.push(user);
-          await saveSession(session);
+          await saveSession(store, session);
         }
         return {
           statusCode: 200,
@@ -104,7 +114,7 @@ export const handler: Handler = async (event, context) => {
       }
 
       if (data.action === "startVoting") {
-        const session = await getSession(sessionId);
+        const session = await getSession(store, sessionId);
         if (!session) {
           return {
             statusCode: 404,
@@ -125,7 +135,7 @@ export const handler: Handler = async (event, context) => {
         session.gameState = GameState.Voting;
         session.votes = {};
         session.votingStartTime = Date.now();
-        await saveSession(session);
+        await saveSession(store, session);
         return {
           statusCode: 200,
           headers,
@@ -134,7 +144,7 @@ export const handler: Handler = async (event, context) => {
       }
 
       if (data.action === "finishVoting") {
-        const session = await getSession(sessionId);
+        const session = await getSession(store, sessionId);
         if (!session) {
           return {
             statusCode: 404,
@@ -143,7 +153,7 @@ export const handler: Handler = async (event, context) => {
           };
         }
         session.gameState = GameState.Finished;
-        await saveSession(session);
+        await saveSession(store, session);
         return {
           statusCode: 200,
           headers,
@@ -152,7 +162,7 @@ export const handler: Handler = async (event, context) => {
       }
 
       if (data.action === "resetVoting") {
-        const session = await getSession(sessionId);
+        const session = await getSession(store, sessionId);
         if (!session) {
           return {
             statusCode: 404,
@@ -163,7 +173,7 @@ export const handler: Handler = async (event, context) => {
         session.gameState = GameState.Idle;
         session.votes = {};
         session.votingStartTime = null;
-        await saveSession(session);
+        await saveSession(store, session);
         return {
           statusCode: 200,
           headers,
@@ -173,7 +183,7 @@ export const handler: Handler = async (event, context) => {
 
       if (data.action === "vote") {
         const { userId, size } = data as { userId: string; size: TShirtSize };
-        const session = await getSession(sessionId);
+        const session = await getSession(store, sessionId);
         if (!session) {
           return {
             statusCode: 404,
@@ -189,7 +199,7 @@ export const handler: Handler = async (event, context) => {
           };
         }
         session.votes[userId] = size;
-        await saveSession(session);
+        await saveSession(store, session);
         return {
           statusCode: 200,
           headers,
