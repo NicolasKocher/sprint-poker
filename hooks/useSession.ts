@@ -151,16 +151,41 @@ export const useSession = (
 
   const castVote = useCallback(
     async (size: TShirtSize) => {
-      if (session && session.gameState === GameState.Voting) {
+      try {
+        // Prüfe erst den aktuellen State vom Server, nicht nur lokal
+        const currentSession = await api.getSession(sessionId);
+        if (currentSession.gameState !== GameState.Voting) {
+          setError(
+            "Voting is not active. Please wait for the host to start a new vote."
+          );
+          // Aktualisiere die Session, um den aktuellen State zu zeigen
+          setSession(currentSession);
+          return;
+        }
+
+        // Jetzt können wir sicher voten
+        const updatedSession = await api.castVote(sessionId, user.id, size);
+        setSession(updatedSession);
+        setError(null); // Clear any previous errors
+      } catch (err) {
+        const errorMessage =
+          err instanceof Error ? err.message : "Failed to cast vote";
+        setError(errorMessage);
+        console.error("Cast vote error:", err);
+
+        // Versuche die Session zu aktualisieren, um den aktuellen State zu sehen
         try {
-          const updatedSession = await api.castVote(sessionId, user.id, size);
-          setSession(updatedSession);
-        } catch (err) {
-          setError(err instanceof Error ? err.message : "Failed to cast vote");
+          const currentSession = await api.getSession(sessionId);
+          setSession(currentSession);
+        } catch (updateErr) {
+          console.error(
+            "Failed to update session after vote error:",
+            updateErr
+          );
         }
       }
     },
-    [session, sessionId, user.id]
+    [sessionId, user.id]
   );
 
   return {

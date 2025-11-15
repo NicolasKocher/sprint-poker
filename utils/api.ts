@@ -83,7 +83,9 @@ export const api = {
       body: JSON.stringify({ action: 'vote', userId, size }),
     });
     if (!response.ok) {
-      throw new Error('Failed to cast vote');
+      const errorData = await response.json().catch(() => ({}));
+      const errorMessage = errorData.error || 'Failed to cast vote';
+      throw new Error(errorMessage);
     }
     return response.json();
   },
