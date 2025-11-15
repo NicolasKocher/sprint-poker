@@ -2,14 +2,36 @@ import type { Handler } from "@netlify/functions";
 import { getStore } from "@netlify/blobs";
 import { Session, GameState, TShirtSize, User } from "../../types";
 
+const STORE_NAME = "sprint-poker-sessions";
+
+const createStore = (siteID: string) =>
+  getStore({
+    name: STORE_NAME,
+    siteID,
+  });
+
 // Store initialisieren: Wir benötigen die Site-ID (verfügbar im Netlify-Kontext oder als ENV)
 const getStoreInstance = async (context: any) => {
   const siteID = context?.site?.id || process.env.NETLIFY_SITE_ID;
-  return getStore({
-    name: "sprint-poker-sessions",
-    siteID,
-    consistency: "strong",
-  });
+  if (!siteID) {
+    throw new Error("Missing Netlify site ID for blobs store");
+  }
+
+  try {
+    return getStore({
+      name: STORE_NAME,
+      siteID,
+      consistency: "strong",
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "BlobsConsistencyError") {
+      console.warn(
+        "Strong consistency not available, falling back to default consistency"
+      );
+      return createStore(siteID);
+    }
+    throw error;
+  }
 };
 
 const getSession = async (
