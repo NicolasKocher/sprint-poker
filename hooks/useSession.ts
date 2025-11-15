@@ -106,10 +106,28 @@ export const useSession = (
 
   const startVoting = useCallback(async () => {
     try {
+      // Prüfe erst, ob Session im richtigen State ist
+      const currentSession = await api.getSession(sessionId);
+      if (currentSession.gameState !== GameState.Idle) {
+        // Warte kurz und versuche es erneut (falls gerade Reset läuft)
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        const retrySession = await api.getSession(sessionId);
+        if (retrySession.gameState !== GameState.Idle) {
+          setError(
+            "Please wait for the session to reset before starting a new vote."
+          );
+          return;
+        }
+      }
+
       const updatedSession = await api.startVoting(sessionId);
       setSession(updatedSession);
+      setError(null); // Clear any previous errors
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to start voting");
+      const errorMessage =
+        err instanceof Error ? err.message : "Failed to start voting";
+      setError(errorMessage);
+      console.error("Start voting error:", err);
     }
   }, [sessionId]);
 
@@ -145,20 +163,6 @@ export const useSession = (
     [session, sessionId, user.id]
   );
 
-  // Automatisches Zurücksetzen nach Finished State
-  useEffect(() => {
-    if (session?.gameState === GameState.Finished) {
-      // Nach 5 Sekunden automatisch zurücksetzen
-      const resetTimer = setTimeout(() => {
-        resetVoting();
-      }, 5000); // 5 Sekunden
-
-      return () => {
-        clearTimeout(resetTimer);
-      };
-    }
-  }, [session?.gameState, resetVoting]);
-
   return {
     session,
     loading,
@@ -166,6 +170,7 @@ export const useSession = (
     createSession,
     startVoting,
     finishVoting,
+    resetVoting,
     castVote,
   };
 };

@@ -15,7 +15,7 @@ interface PokerRoomProps {
 }
 
 const PokerRoom: React.FC<PokerRoomProps> = ({ user, sessionId, isCreating, onExit }) => {
-  const { session, loading, error, startVoting, finishVoting, castVote } = useSession(sessionId, user, isCreating);
+  const { session, loading, error, startVoting, finishVoting, resetVoting, castVote } = useSession(sessionId, user, isCreating);
   const [timeLeft, setTimeLeft] = useState(VOTE_DURATION);
   const [copied, setCopied] = useState(false);
 
@@ -74,13 +74,19 @@ const PokerRoom: React.FC<PokerRoomProps> = ({ user, sessionId, isCreating, onEx
       case GameState.Voting:
         return 'Voting...';
       case GameState.Finished:
-        return 'Resetting...';
+        return isHost ? 'Reset & Start New Vote' : 'Waiting for host to reset...';
     }
   };
 
-  const handleMainButtonClick = () => {
+  const handleMainButtonClick = async () => {
     if (isHost && gameState === GameState.Idle) {
-      startVoting();
+      await startVoting();
+    }
+  };
+
+  const handleResetClick = async () => {
+    if (isHost && gameState === GameState.Finished) {
+      await resetVoting();
     }
   };
 
@@ -132,23 +138,34 @@ const PokerRoom: React.FC<PokerRoomProps> = ({ user, sessionId, isCreating, onEx
       
       <div className="h-16">
         {isHost ? (
-            <button
+          <>
+            {gameState === GameState.Finished ? (
+              <button
+                onClick={handleResetClick}
+                className="px-10 py-4 text-xl font-bold rounded-md transition-all duration-300 ease-in-out bg-lime-400 text-black hover:bg-lime-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-black focus:ring-lime-400"
+              >
+                {getButtonText()}
+              </button>
+            ) : (
+              <button
                 onClick={handleMainButtonClick}
-                disabled={gameState === GameState.Voting || gameState === GameState.Finished}
-                 className={`
-                    px-10 py-4 text-xl font-bold rounded-md transition-all duration-300 ease-in-out
-                    focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-black
-                    ${
-                        gameState === GameState.Voting || gameState === GameState.Finished
-                        ? 'bg-gray-800 text-gray-500 cursor-not-allowed'
-                        : 'bg-lime-400 text-black hover:bg-lime-300 focus:ring-lime-400'
-                    }
-                    `}
-            >
-            {getButtonText()}
-            </button>
+                disabled={gameState === GameState.Voting}
+                className={`
+                  px-10 py-4 text-xl font-bold rounded-md transition-all duration-300 ease-in-out
+                  focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-black
+                  ${
+                    gameState === GameState.Voting
+                      ? 'bg-gray-800 text-gray-500 cursor-not-allowed'
+                      : 'bg-lime-400 text-black hover:bg-lime-300 focus:ring-lime-400'
+                  }
+                `}
+              >
+                {getButtonText()}
+              </button>
+            )}
+          </>
         ) : (
-            <p className="text-gray-500 h-full flex items-center">{getButtonText()}</p>
+          <p className="text-gray-500 h-full flex items-center">{getButtonText()}</p>
         )}
       </div>
     </div>

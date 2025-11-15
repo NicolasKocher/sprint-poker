@@ -98,6 +98,14 @@ export const handler: Handler = async (event, context) => {
             body: JSON.stringify({ error: 'Session not found' }),
           };
         }
+        // Erlaube Start nur wenn im Idle State
+        if (session.gameState !== GameState.Idle) {
+          return {
+            statusCode: 400,
+            headers,
+            body: JSON.stringify({ error: `Cannot start voting. Current state: ${session.gameState}` }),
+          };
+        }
         session.gameState = GameState.Voting;
         session.votes = {};
         session.votingStartTime = Date.now();
