@@ -4,23 +4,42 @@ import { Session, GameState, TShirtSize, User } from "../../types";
 
 const STORE_NAME = "sprint-poker-sessions";
 
-const createStore = (siteID: string) =>
-  getStore({
+const createStore = (siteID: string, token?: string) => {
+  const baseOptions: Record<string, unknown> = {
     name: STORE_NAME,
     siteID,
-  });
+  };
 
-// Store initialisieren: Wir benötigen die Site-ID (verfügbar im Netlify-Kontext oder als ENV)
+  if (token) {
+    baseOptions.token = token;
+  }
+
+  return getStore(baseOptions as any);
+};
+
+// Store initialisieren: Wir versuchen zuerst den eingebauten Netlify Store,
+// danach greifen wir auf @netlify/blobs mit ENV-Fallback zurück.
 const getStoreInstance = async (context: any) => {
+  const netlifyStore = context?.netlify?.blobs?.store?.(STORE_NAME);
+  if (netlifyStore) {
+    return netlifyStore;
+  }
+
   const siteID = context?.site?.id || process.env.NETLIFY_SITE_ID;
-  if (!siteID) {
-    throw new Error("Missing Netlify site ID for blobs store");
+  const token =
+    process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_API_TOKEN;
+
+  if (!siteID || !token) {
+    throw new Error(
+      "Netlify Blobs is not configured. Make sure siteID and NETLIFY_BLOBS_TOKEN (or NETLIFY_API_TOKEN) are available."
+    );
   }
 
   try {
     return getStore({
       name: STORE_NAME,
       siteID,
+      token,
       consistency: "strong",
     });
   } catch (error) {
@@ -28,7 +47,7 @@ const getStoreInstance = async (context: any) => {
       console.warn(
         "Strong consistency not available, falling back to default consistency"
       );
-      return createStore(siteID);
+      return createStore(siteID, token);
     }
     throw error;
   }
