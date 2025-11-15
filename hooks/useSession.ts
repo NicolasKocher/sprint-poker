@@ -26,7 +26,7 @@ export const useSession = (
         // Ignoriere Fehler beim Polling (Session könnte noch nicht existieren)
         console.error("Polling error:", err);
       }
-    }, 1000); // Alle 1 Sekunde aktualisieren
+    }, 500); // Alle 0.5 Sekunden aktualisieren für schnellere Synchronisation
   }, [sessionId]);
 
   const stopPolling = useCallback(() => {
@@ -151,19 +151,15 @@ export const useSession = (
 
   const castVote = useCallback(
     async (size: TShirtSize) => {
-      try {
-        // Prüfe erst den aktuellen State vom Server, nicht nur lokal
-        const currentSession = await api.getSession(sessionId);
-        if (currentSession.gameState !== GameState.Voting) {
-          setError(
-            "Voting is not active. Please wait for the host to start a new vote."
-          );
-          // Aktualisiere die Session, um den aktuellen State zu zeigen
-          setSession(currentSession);
-          return;
-        }
+      // Prüfe lokal zuerst - wenn nicht im Voting State, lass das Polling die Updates übernehmen
+      if (session && session.gameState !== GameState.Voting) {
+        setError(
+          "Voting is not active. Please wait for the host to start a new vote."
+        );
+        return;
+      }
 
-        // Jetzt können wir sicher voten
+      try {
         const updatedSession = await api.castVote(sessionId, user.id, size);
         setSession(updatedSession);
         setError(null); // Clear any previous errors
@@ -173,19 +169,11 @@ export const useSession = (
         setError(errorMessage);
         console.error("Cast vote error:", err);
 
-        // Versuche die Session zu aktualisieren, um den aktuellen State zu sehen
-        try {
-          const currentSession = await api.getSession(sessionId);
-          setSession(currentSession);
-        } catch (updateErr) {
-          console.error(
-            "Failed to update session after vote error:",
-            updateErr
-          );
-        }
+        // Bei Fehler: Lass das Polling die Session aktualisieren (nicht hier überschreiben)
+        // Das Polling wird automatisch den aktuellen State abrufen
       }
     },
-    [sessionId, user.id]
+    [session, sessionId, user.id]
   );
 
   return {
