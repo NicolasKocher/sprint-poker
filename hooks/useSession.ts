@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Session, User, GameState, TShirtSize } from '../types';
-import * as api from '../utils/api';
+import { api } from '../utils/api';
 
 export const useSession = (sessionId: string, user: User) => {
   const [session, setSession] = useState<Session | null>(null);
