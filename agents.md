@@ -11,19 +11,22 @@
 
 ### Wichtige Änderungen / Entscheidungen
 
-1. **Persistente Sessions**  
+1. **Persistente Sessions**
+
    - Von lokalem Speicher (Map) auf Netlify Blobs gewechselt, damit mehrere Geräte/Instanzen identische Daten sehen.
    - `@netlify/blobs` in `package.json`, Store initialisiert mit `siteID`.
 
-2. **Voting-Flow**  
+2. **Voting-Flow**
+
    - Timer beendet Voting automatisch → Host muss per Button zurücksetzen.
    - `startVoting` und `castVote` prüfen Session-State, geben bei Bedarf hilfreiche Fehlermeldungen aus.
 
-3. **Synchronisation**  
+3. **Synchronisation**
+
    - Polling-Intervall auf 500 ms reduziert.
    - `castVote` ruft keine zusätzlichen `getSession` mehr auf; Polling übernimmt Aktualisierung.
 
-4. **UX**  
+4. **UX**
    - Kopierbarer Room-Code mit visuellem Feedback.
    - Nicht-Hosts sehen im Finished-State „Waiting for host to reset…“.
 
@@ -31,5 +34,4 @@
 
 - Für lokale Entwicklung `netlify dev` nutzen, damit Blobs funktionieren (setzt `NETLIFY_BLOBS_TOKEN`).
 - Node-Version sollte >= 20.19.0 sein (siehe Warnung von `@vitejs/plugin-react`).
-- Weitere Stabilitätstests mit mehreren Geräten empfehlenswert. 
-
+- Weitere Stabilitätstests mit mehreren Geräten empfehlenswert.
