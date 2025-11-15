@@ -14,14 +14,8 @@ interface PokerRoomProps {
 }
 
 const PokerRoom: React.FC<PokerRoomProps> = ({ user, sessionId, onExit }) => {
-  const { session, createSession, startVoting, finishVoting, castVote } = useSession(sessionId, user);
+  const { session, loading, error, startVoting, finishVoting, castVote } = useSession(sessionId, user);
   const [timeLeft, setTimeLeft] = useState(VOTE_DURATION);
-
-  useEffect(() => {
-    if (!session) {
-      createSession();
-    }
-  }, [session, createSession]);
 
   useEffect(() => {
     if (session?.gameState === GameState.Voting && session.votingStartTime) {
@@ -46,8 +40,23 @@ const PokerRoom: React.FC<PokerRoomProps> = ({ user, sessionId, onExit }) => {
   const isHost = useMemo(() => session?.hostId === user.id, [session, user.id]);
   const userVote = useMemo(() => session?.votes[user.id] || null, [session, user.id]);
 
+  if (loading) {
+    return <div className="text-gray-400 text-xl">Loading session...</div>;
+  }
+
+  if (error) {
+    return (
+      <div className="text-red-400 text-xl">
+        <p>Error: {error}</p>
+        <button onClick={onExit} className="mt-4 text-gray-400 hover:text-white">
+          &larr; Back
+        </button>
+      </div>
+    );
+  }
+
   if (!session) {
-    return <div>Loading session...</div>;
+    return <div className="text-gray-400 text-xl">Session not found</div>;
   }
   
   const handleVote = (size: TShirtSize) => {

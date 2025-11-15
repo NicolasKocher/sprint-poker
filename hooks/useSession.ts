@@ -1,100 +1,114 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Session, User, GameState, TShirtSize } from '../types';
-import { generateId } from '../utils/helpers';
-
-const getSessionStorageKey = (sessionId: string) => `poker-session-${sessionId}`;
+import * as api from '../utils/api';
 
 export const useSession = (sessionId: string, user: User) => {
   const [session, setSession] = useState<Session | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  const updateLocalStorage = (newSession: Session) => {
-    try {
-      localStorage.setItem(getSessionStorageKey(newSession.id), JSON.stringify(newSession));
-       // Manually dispatch a storage event to trigger updates in the same tab
-      window.dispatchEvent(new StorageEvent('storage', {
-        key: getSessionStorageKey(newSession.id),
-        newValue: JSON.stringify(newSession),
-      }));
-    } catch (error) {
-      console.error("Could not update session in local storage", error);
+  // Polling für Updates
+  const startPolling = useCallback(() => {
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
     }
-  };
+    
+    pollingIntervalRef.current = setInterval(async () => {
+      try {
+        const updatedSession = await api.getSession(sessionId);
+        setSession(updatedSession);
+      } catch (err) {
+        // Ignoriere Fehler beim Polling (Session könnte noch nicht existieren)
+        console.error('Polling error:', err);
+      }
+    }, 1000); // Alle 1 Sekunde aktualisieren
+  }, [sessionId]);
+
+  const stopPolling = useCallback(() => {
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
+    }
+  }, []);
 
   useEffect(() => {
-    const handleStorageChange = (event: StorageEvent) => {
-      if (event.key === getSessionStorageKey(sessionId) && event.newValue) {
-        setSession(JSON.parse(event.newValue));
+    const initializeSession = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        
+        // Versuche Session zu laden
+        try {
+          const existingSession = await api.getSession(sessionId);
+          // Prüfe ob User bereits in Session ist
+          const userInSession = existingSession.users.some(u => u.id === user.id);
+          if (!userInSession) {
+            // User zur Session hinzufügen
+            const updatedSession = await api.joinSession(sessionId, user);
+            setSession(updatedSession);
+          } else {
+            setSession(existingSession);
+          }
+        } catch (err) {
+          // Session existiert nicht, erstelle neue
+          const newSession = await api.createSession(sessionId, user);
+          setSession(newSession);
+        }
+        
+        startPolling();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to initialize session');
+        console.error('Session initialization error:', err);
+      } finally {
+        setLoading(false);
       }
     };
 
-    window.addEventListener('storage', handleStorageChange);
-
-    const storedSession = localStorage.getItem(getSessionStorageKey(sessionId));
-    if (storedSession) {
-      const currentSession = JSON.parse(storedSession) as Session;
-      const userInSession = currentSession.users.some(u => u.id === user.id);
-      if (!userInSession) {
-        const updatedUsers = [...currentSession.users, user];
-        const updatedSession = { ...currentSession, users: updatedUsers };
-        setSession(updatedSession);
-        updateLocalStorage(updatedSession);
-      } else {
-         setSession(currentSession);
-      }
-    }
+    initializeSession();
 
     return () => {
-      window.removeEventListener('storage', handleStorageChange);
+      stopPolling();
     };
-  }, [sessionId, user.id, user.name]);
+  }, [sessionId, user.id, user.name, startPolling, stopPolling]);
 
-  const createSession = useCallback(() => {
-    const newSession: Session = {
-      id: sessionId,
-      hostId: user.id,
-      users: [user],
-      gameState: GameState.Idle,
-      votes: {},
-      votingStartTime: null,
-    };
-    setSession(newSession);
-    updateLocalStorage(newSession);
+  const createSession = useCallback(async () => {
+    try {
+      const newSession = await api.createSession(sessionId, user);
+      setSession(newSession);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create session');
+    }
   }, [sessionId, user]);
 
-  const startVoting = useCallback(() => {
-    if (session) {
-      const newSession: Session = {
-        ...session,
-        gameState: GameState.Voting,
-        votes: {},
-        votingStartTime: Date.now(),
-      };
-      setSession(newSession);
-      updateLocalStorage(newSession);
+  const startVoting = useCallback(async () => {
+    try {
+      const updatedSession = await api.startVoting(sessionId);
+      setSession(updatedSession);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to start voting');
     }
-  }, [session]);
+  }, [sessionId]);
   
-  const finishVoting = useCallback(() => {
-    if (session) {
-      const newSession = {...session, gameState: GameState.Finished };
-      setSession(newSession);
-      updateLocalStorage(newSession);
+  const finishVoting = useCallback(async () => {
+    try {
+      const updatedSession = await api.finishVoting(sessionId);
+      setSession(updatedSession);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to finish voting');
     }
-  }, [session]);
+  }, [sessionId]);
 
-  const castVote = useCallback((size: TShirtSize) => {
+  const castVote = useCallback(async (size: TShirtSize) => {
     if (session && session.gameState === GameState.Voting) {
-       const newSession = {
-        ...session,
-        votes: {
-          ...session.votes,
-          [user.id]: size,
-        },
-      };
-      setSession(newSession);
-      updateLocalStorage(newSession);
+      try {
+        const updatedSession = await api.castVote(sessionId, user.id, size);
+        setSession(updatedSession);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to cast vote');
+      }
     }
-  }, [session, user.id]);
+  }, [session, sessionId, user.id]);
 
-  return { session, createSession, startVoting, finishVoting, castVote };
+  return { session, loading, error, createSession, startVoting, finishVoting, castVote };
 };
