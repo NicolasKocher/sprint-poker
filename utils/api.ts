@@ -23,7 +23,9 @@ export const api = {
       body: JSON.stringify({ action: 'create', user }),
     });
     if (!response.ok) {
-      throw new Error('Failed to create session');
+      const errorData = await response.json().catch(() => ({}));
+      const errorMessage = errorData.error || 'Failed to create session';
+      throw new Error(errorMessage);
     }
     return response.json();
   },

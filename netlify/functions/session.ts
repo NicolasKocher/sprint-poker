@@ -17,29 +17,39 @@ const createStore = (siteID: string, token?: string) => {
   return getStore(baseOptions as any);
 };
 
-// Store initialisieren: Wir versuchen zuerst den eingebauten Netlify Store,
-// danach greifen wir auf @netlify/blobs mit ENV-Fallback zurück.
+// Store initialisieren: Auf Netlify sollte context.netlify.blobs.store verfügbar sein
 const getStoreInstance = async (context: any) => {
-  const netlifyStore = context?.netlify?.blobs?.store?.(STORE_NAME);
-  if (netlifyStore) {
-    return netlifyStore;
+  // Auf Netlify ist context.netlify.blobs.store der bevorzugte Weg
+  if (context?.netlify?.blobs?.store) {
+    try {
+      return context.netlify.blobs.store(STORE_NAME);
+    } catch (error) {
+      console.warn(
+        "Failed to use Netlify built-in store, falling back:",
+        error
+      );
+    }
   }
 
+  // Fallback: Verwende getStore mit siteID
   const siteID = context?.site?.id || process.env.NETLIFY_SITE_ID;
-  const token =
-    process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_API_TOKEN;
 
-  if (!siteID || !token) {
+  if (!siteID) {
+    // Auf Netlify sollte context.site.id immer verfügbar sein
     throw new Error(
-      "Netlify Blobs is not configured. Make sure siteID and NETLIFY_BLOBS_TOKEN (or NETLIFY_API_TOKEN) are available."
+      `Netlify site ID is not available. Context: ${JSON.stringify({
+        hasSite: !!context?.site,
+        siteId: context?.site?.id,
+        hasNetlifyBlobs: !!context?.netlify?.blobs,
+      })}`
     );
   }
 
   try {
+    // Versuche mit strong consistency
     return getStore({
       name: STORE_NAME,
       siteID,
-      token,
       consistency: "strong",
     });
   } catch (error) {
@@ -47,9 +57,18 @@ const getStoreInstance = async (context: any) => {
       console.warn(
         "Strong consistency not available, falling back to default consistency"
       );
-      return createStore(siteID, token);
+      return getStore({
+        name: STORE_NAME,
+        siteID,
+      });
     }
-    throw error;
+    // Bessere Fehlermeldung für Debugging
+    console.error("Store initialization error:", error);
+    throw new Error(
+      `Failed to initialize Blobs store: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
   }
 };
 
@@ -148,7 +167,10 @@ export const handler: Handler = async (event, context) => {
           session.users.push(user);
           sessionModified = true;
         } else if (session.users[userIndex].name !== user.name) {
-          session.users[userIndex] = { ...session.users[userIndex], name: user.name };
+          session.users[userIndex] = {
+            ...session.users[userIndex],
+            name: user.name,
+          };
           sessionModified = true;
         }
 
