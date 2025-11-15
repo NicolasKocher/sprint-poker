@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { Session, User, GameState, TShirtSize } from '../types';
-import { api } from '../utils/api';
+import { useState, useEffect, useCallback, useRef } from "react";
+import { Session, User, GameState, TShirtSize } from "../types";
+import { api } from "../utils/api";
 
 export const useSession = (sessionId: string, user: User) => {
   const [session, setSession] = useState<Session | null>(null);
@@ -13,14 +13,14 @@ export const useSession = (sessionId: string, user: User) => {
     if (pollingIntervalRef.current) {
       clearInterval(pollingIntervalRef.current);
     }
-    
+
     pollingIntervalRef.current = setInterval(async () => {
       try {
         const updatedSession = await api.getSession(sessionId);
         setSession(updatedSession);
       } catch (err) {
         // Ignoriere Fehler beim Polling (Session könnte noch nicht existieren)
-        console.error('Polling error:', err);
+        console.error("Polling error:", err);
       }
     }, 1000); // Alle 1 Sekunde aktualisieren
   }, [sessionId]);
@@ -37,12 +37,14 @@ export const useSession = (sessionId: string, user: User) => {
       try {
         setLoading(true);
         setError(null);
-        
+
         // Versuche Session zu laden
         try {
           const existingSession = await api.getSession(sessionId);
           // Prüfe ob User bereits in Session ist
-          const userInSession = existingSession.users.some(u => u.id === user.id);
+          const userInSession = existingSession.users.some(
+            (u) => u.id === user.id
+          );
           if (!userInSession) {
             // User zur Session hinzufügen
             const updatedSession = await api.joinSession(sessionId, user);
@@ -55,11 +57,13 @@ export const useSession = (sessionId: string, user: User) => {
           const newSession = await api.createSession(sessionId, user);
           setSession(newSession);
         }
-        
+
         startPolling();
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to initialize session');
-        console.error('Session initialization error:', err);
+        setError(
+          err instanceof Error ? err.message : "Failed to initialize session"
+        );
+        console.error("Session initialization error:", err);
       } finally {
         setLoading(false);
       }
@@ -77,7 +81,7 @@ export const useSession = (sessionId: string, user: User) => {
       const newSession = await api.createSession(sessionId, user);
       setSession(newSession);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create session');
+      setError(err instanceof Error ? err.message : "Failed to create session");
     }
   }, [sessionId, user]);
 
@@ -86,29 +90,40 @@ export const useSession = (sessionId: string, user: User) => {
       const updatedSession = await api.startVoting(sessionId);
       setSession(updatedSession);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to start voting');
+      setError(err instanceof Error ? err.message : "Failed to start voting");
     }
   }, [sessionId]);
-  
+
   const finishVoting = useCallback(async () => {
     try {
       const updatedSession = await api.finishVoting(sessionId);
       setSession(updatedSession);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to finish voting');
+      setError(err instanceof Error ? err.message : "Failed to finish voting");
     }
   }, [sessionId]);
 
-  const castVote = useCallback(async (size: TShirtSize) => {
-    if (session && session.gameState === GameState.Voting) {
-      try {
-        const updatedSession = await api.castVote(sessionId, user.id, size);
-        setSession(updatedSession);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to cast vote');
+  const castVote = useCallback(
+    async (size: TShirtSize) => {
+      if (session && session.gameState === GameState.Voting) {
+        try {
+          const updatedSession = await api.castVote(sessionId, user.id, size);
+          setSession(updatedSession);
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "Failed to cast vote");
+        }
       }
-    }
-  }, [session, sessionId, user.id]);
+    },
+    [session, sessionId, user.id]
+  );
 
-  return { session, loading, error, createSession, startVoting, finishVoting, castVote };
+  return {
+    session,
+    loading,
+    error,
+    createSession,
+    startVoting,
+    finishVoting,
+    castVote,
+  };
 };
