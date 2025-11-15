@@ -64,6 +64,18 @@ export const api = {
     return response.json();
   },
 
+  async resetVoting(sessionId: string): Promise<Session> {
+    const response = await fetch(`${API_BASE}/session/${sessionId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'resetVoting' }),
+    });
+    if (!response.ok) {
+      throw new Error('Failed to reset voting');
+    }
+    return response.json();
+  },
+
   async castVote(sessionId: string, userId: string, size: TShirtSize): Promise<Session> {
     const response = await fetch(`${API_BASE}/session/${sessionId}`, {
       method: 'POST',

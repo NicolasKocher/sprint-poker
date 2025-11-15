@@ -2,7 +2,11 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Session, User, GameState, TShirtSize } from "../types";
 import { api } from "../utils/api";
 
-export const useSession = (sessionId: string, user: User) => {
+export const useSession = (
+  sessionId: string,
+  user: User,
+  isCreating: boolean = false
+) => {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -38,27 +42,42 @@ export const useSession = (sessionId: string, user: User) => {
         setLoading(true);
         setError(null);
 
-        // Versuche Session zu laden
-        try {
-          const existingSession = await api.getSession(sessionId);
-          // Prüfe ob User bereits in Session ist
-          const userInSession = existingSession.users.some(
-            (u) => u.id === user.id
-          );
-          if (!userInSession) {
-            // User zur Session hinzufügen
-            const updatedSession = await api.joinSession(sessionId, user);
-            setSession(updatedSession);
-          } else {
-            setSession(existingSession);
+        if (isCreating) {
+          // Wenn wir einen neuen Room erstellen, erstelle die Session
+          try {
+            const newSession = await api.createSession(sessionId, user);
+            setSession(newSession);
+            startPolling();
+          } catch (err) {
+            setError(
+              err instanceof Error ? err.message : "Failed to create session"
+            );
+            console.error("Session creation error:", err);
+            // Kein Polling starten bei Fehler
           }
-        } catch (err) {
-          // Session existiert nicht, erstelle neue
-          const newSession = await api.createSession(sessionId, user);
-          setSession(newSession);
+        } else {
+          // Wenn wir einem Room beitreten, versuche erst zu laden
+          try {
+            const existingSession = await api.getSession(sessionId);
+            // Prüfe ob User bereits in Session ist
+            const userInSession = existingSession.users.some(
+              (u) => u.id === user.id
+            );
+            if (!userInSession) {
+              // User zur Session hinzufügen
+              const updatedSession = await api.joinSession(sessionId, user);
+              setSession(updatedSession);
+            } else {
+              setSession(existingSession);
+            }
+            startPolling();
+          } catch (err) {
+            // Session existiert nicht - zeige Fehler
+            setError("Room not found. Please check the room code.");
+            console.error("Session not found:", err);
+            // Kein Polling starten bei Fehler
+          }
         }
-
-        startPolling();
       } catch (err) {
         setError(
           err instanceof Error ? err.message : "Failed to initialize session"
@@ -74,7 +93,7 @@ export const useSession = (sessionId: string, user: User) => {
     return () => {
       stopPolling();
     };
-  }, [sessionId, user.id, user.name, startPolling, stopPolling]);
+  }, [sessionId, user.id, user.name, isCreating, startPolling, stopPolling]);
 
   const createSession = useCallback(async () => {
     try {
@@ -103,6 +122,15 @@ export const useSession = (sessionId: string, user: User) => {
     }
   }, [sessionId]);
 
+  const resetVoting = useCallback(async () => {
+    try {
+      const updatedSession = await api.resetVoting(sessionId);
+      setSession(updatedSession);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to reset voting");
+    }
+  }, [sessionId]);
+
   const castVote = useCallback(
     async (size: TShirtSize) => {
       if (session && session.gameState === GameState.Voting) {
@@ -116,6 +144,20 @@ export const useSession = (sessionId: string, user: User) => {
     },
     [session, sessionId, user.id]
   );
+
+  // Automatisches Zurücksetzen nach Finished State
+  useEffect(() => {
+    if (session?.gameState === GameState.Finished) {
+      // Nach 5 Sekunden automatisch zurücksetzen
+      const resetTimer = setTimeout(() => {
+        resetVoting();
+      }, 5000); // 5 Sekunden
+
+      return () => {
+        clearTimeout(resetTimer);
+      };
+    }
+  }, [session?.gameState, resetVoting]);
 
   return {
     session,

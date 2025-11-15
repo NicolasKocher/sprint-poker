@@ -127,6 +127,26 @@ export const handler: Handler = async (event, context) => {
         };
       }
 
+      if (data.action === 'resetVoting') {
+        const session = sessions.get(sessionId);
+        if (!session) {
+          return {
+            statusCode: 404,
+            headers,
+            body: JSON.stringify({ error: 'Session not found' }),
+          };
+        }
+        session.gameState = GameState.Idle;
+        session.votes = {};
+        session.votingStartTime = null;
+        sessions.set(sessionId, session);
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify(session),
+        };
+      }
+
       if (data.action === 'vote') {
         const { userId, size } = data;
         const session = sessions.get(sessionId);

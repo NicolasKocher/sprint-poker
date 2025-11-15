@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { generateId } from '../utils/helpers';
 
 interface JoinScreenProps {
-  onJoin: (name: string, sessionId: string) => void;
+  onJoin: (name: string, sessionId: string, isCreating: boolean) => void;
 }
 
 const JoinScreen: React.FC<JoinScreenProps> = ({ onJoin }) => {
@@ -11,13 +11,13 @@ const JoinScreen: React.FC<JoinScreenProps> = ({ onJoin }) => {
 
   const handleCreate = () => {
     if (name.trim()) {
-      onJoin(name, generateId());
+      onJoin(name, generateId(), true);
     }
   };
 
   const handleJoin = () => {
     if (name.trim() && sessionId.trim()) {
-      onJoin(name, sessionId.toUpperCase());
+      onJoin(name, sessionId.toUpperCase(), false);
     }
   };
 

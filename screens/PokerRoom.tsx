@@ -10,12 +10,14 @@ import ResultsView from '../components/ResultsView';
 interface PokerRoomProps {
   user: User;
   sessionId: string;
+  isCreating: boolean;
   onExit: () => void;
 }
 
-const PokerRoom: React.FC<PokerRoomProps> = ({ user, sessionId, onExit }) => {
-  const { session, loading, error, startVoting, finishVoting, castVote } = useSession(sessionId, user);
+const PokerRoom: React.FC<PokerRoomProps> = ({ user, sessionId, isCreating, onExit }) => {
+  const { session, loading, error, startVoting, finishVoting, castVote } = useSession(sessionId, user, isCreating);
   const [timeLeft, setTimeLeft] = useState(VOTE_DURATION);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (session?.gameState === GameState.Voting && session.votingStartTime) {
@@ -72,13 +74,23 @@ const PokerRoom: React.FC<PokerRoomProps> = ({ user, sessionId, onExit }) => {
       case GameState.Voting:
         return 'Voting...';
       case GameState.Finished:
-        return 'Vote Again';
+        return 'Resetting...';
     }
   };
 
   const handleMainButtonClick = () => {
-    if (isHost && (gameState === GameState.Idle || gameState === GameState.Finished)) {
+    if (isHost && gameState === GameState.Idle) {
       startVoting();
+    }
+  };
+
+  const handleCopyRoomCode = async () => {
+    try {
+      await navigator.clipboard.writeText(sessionId);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000); // Reset nach 2 Sekunden
+    } catch (err) {
+      console.error('Failed to copy room code:', err);
     }
   };
 
@@ -86,9 +98,11 @@ const PokerRoom: React.FC<PokerRoomProps> = ({ user, sessionId, onExit }) => {
     <div className="w-full flex flex-col items-center space-y-8 md:space-y-12 animate-fade-in">
         <div className="w-full flex justify-between items-center">
             <button onClick={onExit} className="text-gray-400 hover:text-white transition-colors">&larr; Exit</button>
-            <div className="text-center">
+            <div className="text-center cursor-pointer" onClick={handleCopyRoomCode}>
                 <p className="text-gray-500 text-sm">ROOM CODE</p>
-                <p className="text-2xl font-bold tracking-widest">{sessionId}</p>
+                <p className={`text-2xl font-bold tracking-widest transition-colors ${copied ? 'text-lime-400' : 'text-white hover:text-lime-300'}`}>
+                  {copied ? 'Copied!' : sessionId}
+                </p>
             </div>
             <div className="w-16"></div>
         </div>
@@ -120,12 +134,12 @@ const PokerRoom: React.FC<PokerRoomProps> = ({ user, sessionId, onExit }) => {
         {isHost ? (
             <button
                 onClick={handleMainButtonClick}
-                disabled={gameState === GameState.Voting}
+                disabled={gameState === GameState.Voting || gameState === GameState.Finished}
                  className={`
                     px-10 py-4 text-xl font-bold rounded-md transition-all duration-300 ease-in-out
                     focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-black
                     ${
-                        gameState === GameState.Voting
+                        gameState === GameState.Voting || gameState === GameState.Finished
                         ? 'bg-gray-800 text-gray-500 cursor-not-allowed'
                         : 'bg-lime-400 text-black hover:bg-lime-300 focus:ring-lime-400'
                     }

@@ -8,16 +8,19 @@ import { generateId } from './utils/helpers';
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [isCreating, setIsCreating] = useState<boolean>(false);
 
-  const handleJoin = useCallback((name: string, sid: string) => {
+  const handleJoin = useCallback((name: string, sid: string, creating: boolean) => {
     const newUser: User = { id: generateId(), name };
     setUser(newUser);
     setSessionId(sid);
+    setIsCreating(creating);
   }, []);
 
   const handleExit = useCallback(() => {
     setUser(null);
     setSessionId(null);
+    setIsCreating(false);
   }, []);
 
   return (
@@ -27,7 +30,7 @@ const App: React.FC = () => {
         {!user || !sessionId ? (
           <JoinScreen onJoin={handleJoin} />
         ) : (
-          <PokerRoom user={user} sessionId={sessionId} onExit={handleExit} />
+          <PokerRoom user={user} sessionId={sessionId} isCreating={isCreating} onExit={handleExit} />
         )}
       </main>
       <footer className="text-center py-4 text-gray-600">
