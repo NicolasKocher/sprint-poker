@@ -4,82 +4,76 @@ import { Session, GameState, TShirtSize, User } from "../../types";
 
 const STORE_NAME = "sprint-poker-sessions";
 
-const createStore = (siteID: string, token?: string) => {
-  const baseOptions: Record<string, unknown> = {
-    name: STORE_NAME,
-    siteID,
-  };
-
-  if (token) {
-    baseOptions.token = token;
+const createStoreWithConsistency = (options: {
+  name: string;
+  siteID?: string;
+  token?: string;
+}) => {
+  try {
+    return getStore({ ...options, consistency: "strong" } as any);
+  } catch (error) {
+    if (error instanceof Error && error.name === "BlobsConsistencyError") {
+      console.warn(
+        "Strong consistency not available, falling back to default consistency"
+      );
+      return getStore(options as any);
+    }
+    throw error;
   }
-
-  return getStore(baseOptions as any);
 };
 
-// Store initialisieren: Auf Netlify sollte context.netlify.blobs.store verfügbar sein
-const getStoreInstance = async (context: any) => {
-  // Auf Netlify ist context.netlify.blobs.store der bevorzugte Weg
-  if (context?.netlify?.blobs?.store) {
-    try {
-      const store = context.netlify.blobs.store(STORE_NAME);
-      // Test ob der Store funktioniert
-      if (store && typeof store.get === "function") {
-        return store;
-      }
-    } catch (error) {
-      console.warn(
-        "Failed to use Netlify built-in store, falling back:",
-        error
-      );
-    }
-  }
-
-  // Fallback: Verwende getStore mit siteID
+const createStoreFromEnv = (context: any) => {
   const siteID = context?.site?.id || process.env.NETLIFY_SITE_ID;
+  const token =
+    process.env.NETLIFY_BLOBS_TOKEN ||
+    process.env.NETLIFY_API_TOKEN ||
+    process.env.NETLIFY_AUTH_TOKEN;
 
-  if (!siteID) {
-    // Auf Netlify sollte context.site.id immer verfügbar sein
+  if (!siteID || !token) {
     const contextInfo = {
       hasSite: !!context?.site,
       siteId: context?.site?.id,
       hasNetlifyBlobs: !!context?.netlify?.blobs,
       hasNetlifyBlobsStore: !!context?.netlify?.blobs?.store,
       envSiteId: !!process.env.NETLIFY_SITE_ID,
+      hasToken:
+        !!process.env.NETLIFY_BLOBS_TOKEN ||
+        !!process.env.NETLIFY_API_TOKEN ||
+        !!process.env.NETLIFY_AUTH_TOKEN,
     };
-    console.error("Store initialization failed - missing siteID:", contextInfo);
     throw new Error(
-      `Netlify site ID is not available. Context info: ${JSON.stringify(
+      `Netlify Blobs credentials missing. Run via "netlify dev" (injects NETLIFY_BLOBS_TOKEN + NETLIFY_SITE_ID) or configure these environment variables. Context: ${JSON.stringify(
         contextInfo
       )}`
     );
   }
 
-  try {
-    // Versuche mit strong consistency
-    const store = getStore({
-      name: STORE_NAME,
-      siteID,
-      consistency: "strong",
-    });
-    return store;
-  } catch (error) {
-    if (error instanceof Error && error.name === "BlobsConsistencyError") {
-      console.warn(
-        "Strong consistency not available, falling back to default consistency"
-      );
-      return getStore({
-        name: STORE_NAME,
-        siteID,
-      });
+  return createStoreWithConsistency({ name: STORE_NAME, siteID, token });
+};
+
+// Store initialisieren: Wir versuchen zuerst den eingebauten Netlify Store
+const getStoreInstance = async (context: any) => {
+  if (context?.netlify?.blobs?.store) {
+    try {
+      const store = context.netlify.blobs.store(STORE_NAME);
+      if (store && typeof store.get === "function") {
+        return store;
+      }
+    } catch (error) {
+      console.warn("Failed to use Netlify built-in store, falling back:", error);
     }
-    // Bessere Fehlermeldung für Debugging
-    console.error("Store initialization error:", error);
-    throw new Error(
-      `Failed to initialize Blobs store: ${
-        error instanceof Error ? error.message : String(error)
-      }`
-    );
+  }
+
+  try {
+    return createStoreWithConsistency({ name: STORE_NAME });
+  } catch (error) {
+    const missingEnv =
+      error instanceof Error && error.name === "MissingBlobsEnvironmentError";
+    if (!missingEnv) {
+      console.error("Store initialization error:", error);
+      throw error;
+    }
+    return createStoreFromEnv(context);
   }
 };
 
