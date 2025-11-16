@@ -28,19 +28,14 @@ const createStoreFromEnv = () => {
 
   if (!siteID || !token) {
     throw new Error(
-      "Netlify Blobs credentials missing. Run via `netlify dev` or set NETLIFY_SITE_ID + NETLIFY_BLOBS_TOKEN."
+      "Netlify Blobs credentials missing. Run via `netlify dev` or set NETLIFY_SITE_ID + NETLIFY_BLOBS_TOKEN (or NETLIFY_API_TOKEN)."
     );
   }
 
   return createStoreWithConsistency(STORE_NAME, { siteID, token });
 };
 
-const getStoreInstance = async (context: any) => {
-  const contextStore = context?.netlify?.blobs?.store?.(STORE_NAME);
-  if (contextStore) {
-    return contextStore;
-  }
-
+const getStoreInstance = () => {
   try {
     return createStoreWithConsistency(STORE_NAME);
   } catch (error) {
@@ -51,19 +46,7 @@ const getStoreInstance = async (context: any) => {
       throw error;
     }
 
-    const siteID = context?.site?.id || process.env.NETLIFY_SITE_ID;
-    const token =
-      process.env.NETLIFY_BLOBS_TOKEN ||
-      process.env.NETLIFY_API_TOKEN ||
-      process.env.NETLIFY_AUTH_TOKEN;
-
-    if (!siteID || !token) {
-      throw new Error(
-        "Netlify Blobs credentials missing. Run via `netlify dev` or configure NETLIFY_SITE_ID + NETLIFY_BLOBS_TOKEN."
-      );
-    }
-
-    return createStoreWithConsistency(STORE_NAME, { siteID, token });
+    return createStoreFromEnv();
   }
 };
 
@@ -91,16 +74,10 @@ const saveSession = async (
 };
 
 export const handler: Handler = async (event, context) => {
-  const lambdaEvent = event as unknown as { blobs?: string; headers?: Record<string, string> };
-  if (lambdaEvent?.blobs) {
-    try {
-      connectLambda({
-        blobs: lambdaEvent.blobs,
-        headers: lambdaEvent.headers || {},
-      });
-    } catch (err) {
-      console.warn("Failed to connect lambda to Netlify Blobs context:", err);
-    }
+  try {
+    connectLambda(event as any);
+  } catch (err) {
+    console.warn("connectLambda failed (likely not lambda compatibility mode):", err);
   }
 
   const { httpMethod, path, body } = event;
@@ -128,7 +105,7 @@ export const handler: Handler = async (event, context) => {
   try {
     let store;
     try {
-      store = await getStoreInstance(context);
+      store = getStoreInstance();
     } catch (storeError) {
       console.error("Failed to initialize store:", storeError);
       return {

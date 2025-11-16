@@ -4,14 +4,26 @@ const API_BASE = import.meta.env.DEV
   ? 'http://localhost:8888/.netlify/functions'
   : '/.netlify/functions';
 
+const getErrorMessage = async (response: Response, fallback: string) => {
+  try {
+    const data = await response.json();
+    if (data?.error) {
+      return data.details ? `${data.error}: ${data.details}` : data.error;
+    }
+  } catch {
+    // ignore JSON parsing errors
+  }
+  return fallback;
+};
+
 export const api = {
   async getSession(sessionId: string): Promise<Session> {
     const response = await fetch(`${API_BASE}/session/${sessionId}`);
     if (!response.ok) {
-      if (response.status === 404) {
-        throw new Error('Session not found');
-      }
-      throw new Error('Failed to get session');
+      const message = response.status === 404
+        ? 'Session not found'
+        : await getErrorMessage(response, 'Failed to get session');
+      throw new Error(message);
     }
     return response.json();
   },
@@ -23,9 +35,7 @@ export const api = {
       body: JSON.stringify({ action: 'create', user }),
     });
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      const errorMessage = errorData.error || 'Failed to create session';
-      throw new Error(errorMessage);
+      throw new Error(await getErrorMessage(response, 'Failed to create session'));
     }
     return response.json();
   },
@@ -37,7 +47,7 @@ export const api = {
       body: JSON.stringify({ action: 'join', user }),
     });
     if (!response.ok) {
-      throw new Error('Failed to join session');
+      throw new Error(await getErrorMessage(response, 'Failed to join session'));
     }
     return response.json();
   },
@@ -49,7 +59,7 @@ export const api = {
       body: JSON.stringify({ action: 'startVoting' }),
     });
     if (!response.ok) {
-      throw new Error('Failed to start voting');
+      throw new Error(await getErrorMessage(response, 'Failed to start voting'));
     }
     return response.json();
   },
@@ -61,7 +71,7 @@ export const api = {
       body: JSON.stringify({ action: 'finishVoting' }),
     });
     if (!response.ok) {
-      throw new Error('Failed to finish voting');
+      throw new Error(await getErrorMessage(response, 'Failed to finish voting'));
     }
     return response.json();
   },
@@ -73,7 +83,7 @@ export const api = {
       body: JSON.stringify({ action: 'resetVoting' }),
     });
     if (!response.ok) {
-      throw new Error('Failed to reset voting');
+      throw new Error(await getErrorMessage(response, 'Failed to reset voting'));
     }
     return response.json();
   },
@@ -85,9 +95,7 @@ export const api = {
       body: JSON.stringify({ action: 'vote', userId, size }),
     });
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      const errorMessage = errorData.error || 'Failed to cast vote';
-      throw new Error(errorMessage);
+      throw new Error(await getErrorMessage(response, 'Failed to cast vote'));
     }
     return response.json();
   },
@@ -99,7 +107,7 @@ export const api = {
       body: JSON.stringify({ action: 'leave', userId }),
     });
     if (!response.ok && response.status !== 404) {
-      throw new Error('Failed to leave session');
+      throw new Error(await getErrorMessage(response, 'Failed to leave session'));
     }
   },
 
