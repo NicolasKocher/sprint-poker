@@ -4,20 +4,10 @@ import { Session, GameState, TShirtSize, User } from "../../types";
 
 const STORE_NAME = "sprint-poker-sessions";
 
-const createStoreWithConsistency = (
+const createStore = (
   storeName: string,
   options: { siteID?: string; token?: string } = {}
-) => {
-  try {
-    return getStore({ name: storeName, consistency: "strong", ...options } as any);
-  } catch (error) {
-    if (error instanceof Error && error.name === "BlobsConsistencyError") {
-      console.warn("Strong consistency unavailable, falling back", error);
-      return getStore({ name: storeName, ...options } as any);
-    }
-    throw error;
-  }
-};
+) => getStore({ name: storeName, ...options } as any);
 
 const createStoreFromEnv = () => {
   const siteID = process.env.NETLIFY_SITE_ID;
@@ -32,12 +22,12 @@ const createStoreFromEnv = () => {
     );
   }
 
-  return createStoreWithConsistency(STORE_NAME, { siteID, token });
+  return createStore(STORE_NAME, { siteID, token });
 };
 
 const getStoreInstance = () => {
   try {
-    return createStoreWithConsistency(STORE_NAME);
+    return createStore(STORE_NAME);
   } catch (error) {
     const missingEnv =
       error instanceof Error && error.name === "MissingBlobsEnvironmentError";
