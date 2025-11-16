@@ -1,13 +1,13 @@
 import type { Handler } from "@netlify/functions";
-import { getStore } from "@netlify/blobs";
+import { connectLambda, getStore } from "@netlify/blobs";
 import { Session, GameState, TShirtSize, User } from "../../types";
 
 const STORE_NAME = "sprint-poker-sessions";
 
-const createStoreWithConsistency = (storeName: string, options: {
-  siteID?: string;
-  token?: string;
-}) => {
+const createStoreWithConsistency = (
+  storeName: string,
+  options: { siteID?: string; token?: string } = {}
+) => {
   try {
     return getStore({ name: storeName, consistency: "strong", ...options } as any);
   } catch (error) {
@@ -41,21 +41,30 @@ const getStoreInstance = async (context: any) => {
     return contextStore;
   }
 
-  const envContext = context?.site?.id
-    ? createStoreWithConsistency(STORE_NAME, {
-        siteID: context.site.id,
-        token:
-          process.env.NETLIFY_BLOBS_TOKEN ||
-          process.env.NETLIFY_API_TOKEN ||
-          process.env.NETLIFY_AUTH_TOKEN,
-      })
-    : null;
+  try {
+    return createStoreWithConsistency(STORE_NAME);
+  } catch (error) {
+    const missingEnv =
+      error instanceof Error && error.name === "MissingBlobsEnvironmentError";
+    if (!missingEnv) {
+      console.error("Store initialization error:", error);
+      throw error;
+    }
 
-  if (envContext) {
-    return envContext;
+    const siteID = context?.site?.id || process.env.NETLIFY_SITE_ID;
+    const token =
+      process.env.NETLIFY_BLOBS_TOKEN ||
+      process.env.NETLIFY_API_TOKEN ||
+      process.env.NETLIFY_AUTH_TOKEN;
+
+    if (!siteID || !token) {
+      throw new Error(
+        "Netlify Blobs credentials missing. Run via `netlify dev` or configure NETLIFY_SITE_ID + NETLIFY_BLOBS_TOKEN."
+      );
+    }
+
+    return createStoreWithConsistency(STORE_NAME, { siteID, token });
   }
-
-  return createStoreFromEnv();
 };
 
 const getSession = async (
@@ -82,6 +91,18 @@ const saveSession = async (
 };
 
 export const handler: Handler = async (event, context) => {
+  const lambdaEvent = event as unknown as { blobs?: string; headers?: Record<string, string> };
+  if (lambdaEvent?.blobs) {
+    try {
+      connectLambda({
+        blobs: lambdaEvent.blobs,
+        headers: lambdaEvent.headers || {},
+      });
+    } catch (err) {
+      console.warn("Failed to connect lambda to Netlify Blobs context:", err);
+    }
+  }
+
   const { httpMethod, path, body } = event;
   const sessionId = path.split("/").pop()?.toUpperCase();
 
